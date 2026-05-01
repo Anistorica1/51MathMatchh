@@ -13,6 +13,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # 创建示例数据（模拟实际情况：只有含噪带缺失值的数据）
 df1 = pd.read_excel('附件3：监测数据（训练集与实验集）-问题3.xlsx', sheet_name="训练集")
+name = (df1.iloc[:,1:2].columns[0])
 observed_data = df1.iloc[:, 1]  # 使用单索引，返回一维 Series
 
 # 1. 定义不同的处理方法和插值方法
@@ -33,7 +34,7 @@ def method_moving_average(data):
 def method_exponential_smoothing(data):
     """指数平滑"""
     data_filled = pd.Series(data).interpolate().ffill().bfill()
-    return data_filled.ewm(span=5).mean().values
+    return data_filled.ewm(alpha=0.5, adjust=False).mean().values
 
 
 def method_savitzky_golay(data):
@@ -156,7 +157,7 @@ try:
 
     # 使用修复后的可视化
     fig = viz.plot_with_nan_handling(observed_data, cleaned_data,
-                                     f"数据处理效果对比 (评分: {total_score:.3f})")
+                                     f"{name}数据处理效果对比 (评分: {total_score:.3f})")
     import matplotlib.pyplot as plt
 
     plt.show()

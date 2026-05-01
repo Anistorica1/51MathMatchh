@@ -13,7 +13,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 def find_transition_nodes(disp_data, time_data=None, smooth_win=11,
                           init_ratio=0.15, acc_threshold_sigma=2.5,
-                          peak_decay_ratio=0.35, min_continuous=5):
+                          peak_decay_ratio=0.35, min_continuous=8):
     """
     识别滑坡位移三段式形变阶段的转换节点
 
@@ -95,7 +95,7 @@ def find_transition_nodes(disp_data, time_data=None, smooth_win=11,
         acc_diff = np.abs(np.diff(acc_smooth))
         node1 = np.argmax(acc_diff[n_init:]) + n_init
 
-    # 5. 识别节点2（加速 → 快速）
+    # 5. 识别节点2（加速 → 快速）- 找到最明显的转换点
     node2 = None
 
     if node1 < n - 10:
@@ -108,26 +108,72 @@ def find_transition_nodes(disp_data, time_data=None, smooth_win=11,
         if peak_val > acc_init_mean + 2 * acc_init_std:
             threshold2 = peak_val * peak_decay_ratio
 
-            for j in range(peak_idx_in_post, len(acc_post) - min_continuous):
-                if np.all(acc_post[j:j + min_continuous] < threshold2):
-                    node2 = node1 + j
-                    break
+            # 完整扫描所有可能的衰减段
+            best_score = -np.inf
+            best_idx = None
 
-    # 如果未找到节点2，使用后段速度拐点作为备选
-    if node2 is None:
-        # 寻找速度导数最小的点（速度趋于稳定）
+            # 从峰值点后开始扫描
+            for j in range(peak_idx_in_post + min_continuous, len(acc_post)):
+                # 检查当前点之后的 min_continuous 个点是否都低于阈值
+                if j + min_continuous <= len(acc_post):
+                    window_below = acc_post[j:j + min_continuous]
+                    if np.all(window_below < threshold2):
+                        # 计算该转换点的"明显性得分"
+                        # 得分考虑：加速度下降的幅度、下降的陡峭程度
+                        fall_amplitude = peak_val - np.mean(window_below)
+                        # 从峰值到当前点的下降梯度
+                        down_slope = (peak_val - acc_post[j]) / max(1, j - peak_idx_in_post)
+
+                        score = fall_amplitude * down_slope
+
+                        if score > best_score:
+                            best_score = score
+                            best_idx = j
+
+            if best_idx is not None:
+                node2 = node1 + best_idx
+
+    # 如果未找到满足阈值条件的节点，使用加速度梯度变化最大点
+    if node2 is None and node1 < n - 10:
+        # 计算加速度的负梯度（下降最快的区域）
+        acc_derivative = -np.gradient(acc_smooth[node1:])  # 取负值，关注加速度下降
+        # 平滑梯度
+        if len(acc_derivative) >= 5:
+            acc_derivative = savgol_filter(acc_derivative, min(5, len(acc_derivative) if len(
+                acc_derivative) % 2 == 1 else len(acc_derivative) - 1), 1)
+
+        # 找到加速度下降最快的位置（从后半分找最显著的）
+        search_start = max(len(acc_derivative) // 3, peak_idx_in_post if 'peak_idx_in_post' in locals() else 0)
+        candidate_idx = np.argmax(acc_derivative[search_start:]) + search_start
+        node2 = node1 + candidate_idx
+
+    # 备选方案：使用速度的二阶导数拐点
+    if node2 is None or node2 <= node1 + 5:
         if node1 < n - 10:
-            vel_post = vel[node1:]
-            vel_diff = np.abs(np.gradient(vel_post))
-            # 速度变化最小的点
-            stable_idx = np.argmin(vel_diff[len(vel_diff) // 3:]) + len(vel_diff) // 3
-            node2 = node1 + stable_idx
-        else:
-            node2 = int(n * 0.7)  # 默认位置
+            # 计算速度的变化率
+            vel_acc = np.gradient(vel[node1:])
+            # 找到速度加速度最大变化点（从加速到减速的转折）
+            if len(vel_acc) > 10:
+                # 平滑处理
+                vel_acc_smooth = savgol_filter(vel_acc,
+                                               min(7, len(vel_acc) if len(vel_acc) % 2 == 1 else len(vel_acc) - 1),
+                                               2) if len(vel_acc) >= 7 else vel_acc
+                # 找到从正转负的拐点
+                zero_crossings = np.where(np.diff(np.sign(vel_acc_smooth)) < 0)[0]
+                if len(zero_crossings) > 0:
+                    node2 = node1 + zero_crossings[0]
+                else:
+                    # 如果没有过零点，找变化最大的负梯度点
+                    neg_indices = np.where(vel_acc_smooth < 0)[0]
+                    if len(neg_indices) > 0:
+                        node2 = node1 + neg_indices[np.argmin(vel_acc_smooth[neg_indices])]
 
-    # 确保节点顺序正确
-    if node2 <= node1:
-        node2 = min(n - 1, node1 + int((n - node1) * 0.5))
+    # 最终保障：确保节点2在节点1之后且不超过数据范围
+    if node2 is None or node2 <= node1:
+        node2 = min(n - 1, node1 + int((n - node1) * 0.6))
+
+    if node2 >= n:
+        node2 = n - 1
 
     return node1, node2, vel, acc_smooth
 
@@ -247,13 +293,12 @@ def analyze_excel_stages(excel_path, sheet_name=0, disp_col=None, time_col=None,
     # 读取Excel
     print(f"正在读取文件: {excel_path}")
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
-    df = df.iloc[:,1:]
     print(f"数据形状: {df.shape}")
     print(f"列名: {list(df.columns)}")
 
     # 确定位移列
     if disp_col is None:
-        disp = df.iloc[:, 0].values
+        disp = df.iloc[:, 1].values
         print(f"使用第一列作为位移数据")
     else:
         if isinstance(disp_col, str):
@@ -363,11 +408,11 @@ if __name__ == "__main__":
             excel_path=excel_file,
             sheet_name=0,  # 第一个工作表
             disp_col=None,  # 默认第一列为位移
-            time_col=None,  # 无时间列则使用行号
+            time_col="时间_小时",  # 无时间列则使用行号
             smooth_win=11,  # 平滑窗口
             init_ratio=0.15,  # 前15%作为初始段
             acc_threshold_sigma=2.5,  # 2.5倍标准差阈值
-            peak_decay_ratio=0.1  # 峰值下降到35%作为节点2
+            peak_decay_ratio=0.35  # 峰值下降到35%作为节点2
         )
 
         # 如果需要导出结果到Excel

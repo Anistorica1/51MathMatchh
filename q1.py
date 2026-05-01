@@ -224,49 +224,56 @@ def main():
     print(test_df.to_string(index=False))
 
     # 6. 可视化
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    # fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig1, ax1 = plt.subplots(figsize=(7, 6))
+    ax1.scatter(A, B, alpha=0.3, s=10, label='原始数据')
+    ax1.scatter(A, A_corrected, alpha=0.3, s=10, label='校正后数据', marker='x')
+    ax1.plot([A.min(), A.max()],
+             [calibrator.k * A.min() + calibrator.b,
+              calibrator.k * A.max() + calibrator.b],
+             'r--', linewidth=2, label=f'校正线: A_c = {calibrator.k:.3f}×A + {calibrator.b:.3f}')
+    ax1.set_xlabel('原始光纤位移计数据 A (mm)')
+    ax1.set_ylabel('位移 (mm)')
+    ax1.set_title('数据校正效果对比')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
-    # 子图1：校正前后对比
-    axes[0, 0].scatter(A, B, alpha=0.3, s=10, label='原始数据')
-    axes[0, 0].scatter(A, A_corrected, alpha=0.3, s=10, label='校正后数据', marker='x')
-    axes[0, 0].plot([A.min(), A.max()],
-                    [calibrator.k * A.min() + calibrator.b,
-                     calibrator.k * A.max() + calibrator.b],
-                    'r--', linewidth=2, label=f'校正线: A_c = {calibrator.k:.3f}×A + {calibrator.b:.3f}')
-    axes[0, 0].set_xlabel('原始光纤位移计数据 A (mm)')
-    axes[0, 0].set_ylabel('位移 (mm)')
-    axes[0, 0].set_title('数据校正效果对比')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-
-    # 子图2：残差分布
+    # ========== 图2：残差分布散点图 ==========
     residuals = A_corrected - B
-    axes[0, 1].scatter(A, residuals, alpha=0.3, s=10)
-    axes[0, 1].axhline(y=0, color='r', linestyle='--', linewidth=2)
-    axes[0, 1].axhline(y=np.mean(residuals), color='g', linestyle='-',
-                       linewidth=1, label=f'均值: {np.mean(residuals):.4f}')
-    axes[0, 1].set_xlabel('原始光纤位移计数据 A (mm)')
-    axes[0, 1].set_ylabel('残差 (mm)')
-    axes[0, 1].set_title(f'残差分布 (RMSE={metrics["RMSE"]:.4f}mm)')
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
+    fig2, ax2 = plt.subplots(figsize=(7, 6))
+    ax2.scatter(A, residuals, alpha=0.3, s=10)
+    ax2.axhline(y=0, color='r', linestyle='--', linewidth=2)
+    ax2.axhline(y=np.mean(residuals), color='g', linestyle='-',
+                linewidth=1, label=f'均值: {np.mean(residuals):.4f}')
+    ax2.set_xlabel('原始光纤位移计数据 A (mm)')
+    ax2.set_ylabel('残差 (mm)')
+    ax2.set_title(f'残差分布 (RMSE={metrics["RMSE"]:.4f}mm)')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
-    # 子图3：残差直方图
-    axes[1, 0].hist(residuals, bins=50, edgecolor='black', alpha=0.7)
-    axes[1, 0].axvline(x=0, color='r', linestyle='--', linewidth=2)
-    axes[1, 0].axvline(x=np.mean(residuals), color='g', linestyle='-',
-                       linewidth=1, label=f'均值: {np.mean(residuals):.4f}')
-    axes[1, 0].set_xlabel('残差 (mm)')
-    axes[1, 0].set_ylabel('频数')
-    axes[1, 0].set_title('残差分布直方图')
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3)
+    # ========== 图3：残差直方图 ==========
+    fig3, ax3 = plt.subplots(figsize=(7, 6))
+    ax3.hist(residuals, bins=50, edgecolor='black', alpha=0.7)
+    ax3.axvline(x=0, color='r', linestyle='--', linewidth=2)
+    ax3.axvline(x=np.mean(residuals), color='g', linestyle='-',
+                linewidth=1, label=f'均值: {np.mean(residuals):.4f}')
+    ax3.set_xlabel('残差 (mm)')
+    ax3.set_ylabel('频数')
+    ax3.set_title('残差分布直方图')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
-    # 子图4：Q-Q图
-    stats.probplot(residuals, dist="norm", plot=axes[1, 1])
-    axes[1, 1].set_title('Q-Q图（残差正态性检验）')
-    axes[1, 1].grid(True, alpha=0.3)
-
+    # ========== 图4：Q-Q图 ==========
+    fig4, ax4 = plt.subplots(figsize=(7, 6))
+    stats.probplot(residuals, dist="norm", plot=ax4)
+    ax4.set_title('Q-Q图（残差正态性检验）')
+    ax4.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
 

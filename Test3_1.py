@@ -13,8 +13,8 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # 创建示例数据（模拟实际情况：只有含噪带缺失值的数据）
 df1 = pd.read_excel('附件3：监测数据（训练集与实验集）-问题3.xlsx', sheet_name="训练集")
-name = (df1.iloc[:,1:2].columns[0])
-observed_data = df1.iloc[:, 1]  # 使用单索引，返回一维 Series
+name = (df1.iloc[:,5:6].columns[0])
+observed_data = df1.iloc[:, 5]  # 使用单索引，返回一维 Series
 
 # 1. 定义不同的处理方法和插值方法
 def method_median_filter(data):
@@ -45,6 +45,7 @@ def method_savitzky_golay(data):
 
 
 # 2. 比较去噪方法
+print(name)
 print("\n" + "=" * 60)
 print("1. 不同去噪方法比较")
 print("=" * 60)
@@ -111,10 +112,10 @@ filled_data = linear_interpolation(observed_data)
 # 再去噪
 best_denoise_method = methods[best_method]
 cleaned_data = best_denoise_method(filled_data)
-df = pd.DataFrame(cleaned_data, columns=['cleaned降水量'])
+df = pd.DataFrame(cleaned_data, columns=[name])
 
 # 保存到Excel
-df.to_excel('降水量.xlsx', index=False)
+df.to_excel(f'{name}.xlsx', index=False)
 
 print(f"原始数据有效值: {observed_data[~np.isnan(observed_data)].shape[0]}")
 print(f"插值后数据量: {len(filled_data)}")

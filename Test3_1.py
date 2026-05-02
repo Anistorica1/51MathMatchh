@@ -12,9 +12,9 @@ plt.rcParams['axes.unicode_minus'] = False
 
 
 # 创建示例数据（模拟实际情况：只有含噪带缺失值的数据）
-df1 = pd.read_excel('附件3：监测数据（训练集与实验集）-问题3.xlsx', sheet_name="训练集")
-name = (df1.iloc[:,5:6].columns[0])
-observed_data = df1.iloc[:, 5]  # 使用单索引，返回一维 Series
+df1 = pd.read_excel('附件3：监测数据（训练集与实验集）-问题3.xlsx', sheet_name="实验集")
+name = (df1.iloc[:,4:5].columns[0])
+observed_data = df1.iloc[:, 4]  # 使用单索引，返回一维 Series
 
 # 1. 定义不同的处理方法和插值方法
 def method_median_filter(data):
@@ -115,7 +115,7 @@ cleaned_data = best_denoise_method(filled_data)
 df = pd.DataFrame(cleaned_data, columns=[name])
 
 # 保存到Excel
-df.to_excel(f'{name}.xlsx', index=False)
+df.to_excel(f'{name}+实验.xlsx', index=False)
 
 print(f"原始数据有效值: {observed_data[~np.isnan(observed_data)].shape[0]}")
 print(f"插值后数据量: {len(filled_data)}")

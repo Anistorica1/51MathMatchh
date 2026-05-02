@@ -489,6 +489,7 @@ def plot_correlation_network(corr_matrix, threshold=0.3):
     plt.tight_layout()
     plt.show()
 if __name__ == '__main__':
-    df = pd.read_excel("监测数据cleaned.xlsx")
+    df = pd.read_excel("4phase3.xlsx")
+    df = df.iloc[:,1:8]
     spearman_analysis(df,plot_clustermap=True,plot_heatmap=True,target="表面位移_mm")
 

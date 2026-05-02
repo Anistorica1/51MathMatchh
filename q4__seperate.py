@@ -1,97 +1,413 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
+import warnings
 
-# =========================
-# 1. 读取数据
-# =========================
-file_path = "附件4：监测数据（训练集与实验集）-问题4.xlsx"  # 修改为你的路径
+warnings.filterwarnings('ignore')
 
-df = pd.read_excel(file_path)
+# 设置中文显示
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
 
-# 假设第一列是时间
-df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0])
-df.set_index(df.columns[0], inplace=True)
 
-# 第一列为表面位移
-displacement = df.iloc[:, 0]
+def find_transition_nodes(disp_data, time_data=None, smooth_win=11,
+                          init_ratio=0.15, acc_threshold_sigma=2.5,
+                          peak_decay_ratio=0.35, min_continuous=4):
+    """
+    识别滑坡位移三段式形变阶段的转换节点
 
-# =========================
-# 2. 缺失值处理（爆破相关字段）
-# =========================
-df = df.fillna(0)
+    参数:
+    ----------
+    disp_data : array-like
+        位移数据序列
+    time_data : array-like, optional
+        时间数据序列，若为None则使用索引
+    smooth_win : int
+        平滑窗口大小（需为奇数）
+    init_ratio : float
+        初始稳定段比例（0-1之间）
+    acc_threshold_sigma : float
+        加速度阈值系数（倍数σ）
+    peak_decay_ratio : float
+        加速度峰值衰减比例（下降到峰值的多少倍以下）
+    min_continuous : int
+        最小连续点数（用于确认突变）
 
-# =========================
-# 3. 平滑处理（降低噪声）
-# =========================
-# 滑动平均
-window_size = 5
-disp_smooth = displacement.rolling(window=window_size, center=True).mean()
+    返回:
+    ----------
+    node1 : int
+        节点1的索引（匀速→加速）
+    node2 : int
+        节点2的索引（加速→快速）
+    vel : array
+        速度序列
+    acc : array
+        加速度序列
+    """
 
-# 填补边缘NaN
-disp_smooth = disp_smooth.fillna(method='bfill').fillna(method='ffill')
+    # 数据预处理
+    disp = np.array(disp_data, dtype=float)
+    n = len(disp)
 
-# =========================
-# 4. 计算速度和加速度
-# =========================
-# 一阶差分（速度）
-velocity = disp_smooth.diff()
-
-# 二阶差分（加速度）
-acceleration = velocity.diff()
-
-# 去除NaN
-velocity = velocity.fillna(0)
-acceleration = acceleration.fillna(0)
-
-# =========================
-# 5. 自动分阶段（核心）
-# =========================
-
-# 用分位数作为阈值（更稳健）
-v1 = velocity.quantile(0.33)
-v2 = velocity.quantile(0.66)
-
-# 阶段标签：
-# 1 = 缓慢匀速
-# 2 = 加速
-# 3 = 快速
-stage = []
-
-for v in velocity:
-    if v <= v1:
-        stage.append(1)
-    elif v <= v2:
-        stage.append(2)
+    if time_data is None:
+        time = np.arange(n)
     else:
-        stage.append(3)
+        time = np.array(time_data, dtype=float)
 
-df['stage'] = stage
+    dt = np.mean(np.diff(time)) if n > 1 else 1.0
 
-# =========================
-# 6. 可视化结果
-# =========================
-plt.figure(figsize=(12, 6))
+    # 1. 平滑位移（Savitzky-Golay滤波器）
+    if n >= smooth_win and smooth_win % 2 == 1:
+        disp_smooth = savgol_filter(disp, min(smooth_win, n if n % 2 == 1 else n - 1), 2)
+    else:
+        disp_smooth = disp.copy()
 
-plt.plot(df.index, displacement, label='原始位移', alpha=0.5)
-plt.plot(df.index, disp_smooth, label='平滑位移', linewidth=2)
+    # 2. 计算速度和加速度（中心差分法）
+    vel = np.gradient(disp_smooth, dt)
+    acc = np.gradient(vel, dt)
 
-# 用颜色标记阶段
-colors = {1: 'green', 2: 'orange', 3: 'red'}
-for s in [1, 2, 3]:
-    idx = df['stage'] == s
-    plt.scatter(df.index[idx], disp_smooth[idx],
-                color=colors[s], s=10, label=f'阶段{s}')
+    # 对加速度再次平滑（降噪）
+    if n >= 9:
+        acc_smooth = savgol_filter(acc, min(9, n if n % 2 == 1 else n - 1), 2)
+    else:
+        acc_smooth = acc.copy()
 
-plt.legend()
-plt.title("位移分阶段结果")
-plt.xlabel("时间")
-plt.ylabel("位移")
-plt.show()
+    # 3. 确定初始稳定段（前 init_ratio 比例的数据）
+    n_init = max(5, int(init_ratio * n))
+    acc_init = acc_smooth[:n_init]
+    acc_init_mean = np.mean(acc_init)
+    acc_init_std = np.std(acc_init)
 
-# =========================
-# 7. 输出结果
-# =========================
-df.to_excel("阶段划分结果.xlsx")
+    # 4. 识别节点1（匀速 → 加速）
+    threshold1 = acc_init_mean + acc_threshold_sigma * acc_init_std
+    node1 = None
 
-print("阶段划分完成，结果已保存！")
+    for i in range(n_init, n - min_continuous):
+        # 连续 min_continuous 个点加速度超过阈值且持续上升趋势
+        window = acc_smooth[i:i + min_continuous]
+        if np.all(window > threshold1) and window[-1] > window[0]:
+            node1 = i
+            break
+
+    # 如果未找到节点1，使用加速度变化率最大点作为备选
+    if node1 is None:
+        acc_diff = np.abs(np.diff(acc_smooth))
+        node1 = np.argmax(acc_diff[n_init:]) + n_init
+
+    # 5. 识别节点2（加速 → 快速）- 找到最明显的转换点
+    # 5. 识别节点2（第一次加速结束，减速到接近平稳的点）
+    node2 = None
+
+    if node1 is not None and node1 < n - 10:
+        acc_post = acc_smooth[node1:]
+
+        # 从节点1后跳过初始稳定区再找峰值（避免节点1附近误检）
+        skip_len = max(5, int(len(acc_post) * 0.65))  # 跳过前5%
+        acc_search = acc_post[skip_len:]
+
+        # 找第一个显著峰值
+        from scipy.signal import find_peaks
+        peaks = find_peaks(acc_search, height=acc_init_mean + acc_init_std, distance=3)[0]
+
+        if len(peaks) > 0:
+            first_peak = peaks[0] + skip_len
+            peak_val = acc_post[first_peak]
+            near_zero_threshold = max(acc_init_std * 1.2, 0.03)
+
+            # 从峰值后找首次连续接近零的点（至少偏离峰值5个点）
+            start_i = max(first_peak + 3, first_peak + 1)
+            for i in range(start_i, len(acc_post) - min_continuous):
+                if np.all(np.abs(acc_post[i:i + min_continuous]) < near_zero_threshold):
+                    node2 = node1 + i
+                    break
+
+            # 兜底：找加速度下降到峰值一半以下的第一个点
+            if node2 is None:
+                half_peak = peak_val / 2
+                for i in range(first_peak + 2, len(acc_post)):
+                    if acc_post[i] < half_peak:
+                        node2 = node1 + i
+                        break
+
+    # 边界检查：确保节点2 > 节点1
+    if node2 is not None:
+        if node2 <= node1:
+            node2 = node1 + min_continuous * 2
+        node2 = min(node2, n - 1)
+
+    return node1, node2, vel, acc_smooth
+
+
+def plot_results(disp, time, node1, node2, vel, acc, save_path=None):
+    """
+    绘制三段式变形阶段识别结果
+
+    参数:
+    ----------
+    disp, time : array
+        原始位移和时间数据
+    node1, node2 : int
+        转换节点索引
+    vel, acc : array
+        速度和加速度序列
+    save_path : str, optional
+        保存图片路径
+    """
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10))
+    fig.suptitle('滑坡位移三段式形变阶段识别', fontsize=16, fontweight='bold')
+
+    # 1. 位移-时间图
+    ax1 = axes[0]
+    ax1.plot(time, disp, 'b-', linewidth=1.5, alpha=0.7, label='原始位移')
+    ax1.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2,
+                label=f'节点1 (匀速→加速): t={time[node1]:.1f}')
+    ax1.axvline(x=time[node2], color='red', linestyle='--', linewidth=2,
+                label=f'节点2 (加速→快速): t={time[node2]:.1f}')
+
+    # 标注三个区域
+    ax1.axvspan(time[0], time[node1], alpha=0.1, color='green', label='①缓慢匀速段')
+    ax1.axvspan(time[node1], time[node2], alpha=0.1, color='yellow', label='②加速形变段')
+    ax1.axvspan(time[node2], time[-1], alpha=0.1, color='red', label='③快速形变段')
+
+    ax1.set_xlabel('时间', fontsize=12)
+    ax1.set_ylabel('位移', fontsize=12)
+    ax1.legend(loc='best')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_title('位移-时间曲线与阶段划分', fontsize=12)
+
+    # 2. 速度-时间图
+    ax2 = axes[1]
+    ax2.plot(time, vel, 'g-', linewidth=1.5, alpha=0.7, label='速度')
+    ax2.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2)
+    ax2.axvline(x=time[node2], color='red', linestyle='--', linewidth=2)
+    ax2.axhline(y=np.mean(vel[:node1]), color='green', linestyle=':',
+                linewidth=1.5, label=f'匀速段平均速度 = {np.mean(vel[:node1]):.4f}')
+    ax2.axhline(y=np.mean(vel[node2:]), color='red', linestyle=':',
+                linewidth=1.5, label=f'快速段平均速度 = {np.mean(vel[node2:]):.4f}')
+
+    ax2.set_xlabel('时间', fontsize=12)
+    ax2.set_ylabel('速度', fontsize=12)
+    ax2.legend(loc='best')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_title('速度-时间曲线（速度突变是阶段转换的关键指标）', fontsize=12)
+
+    # 3. 加速度-时间图
+    ax3 = axes[2]
+    ax3.plot(time, acc, 'r-', linewidth=1.5, alpha=0.7, label='加速度')
+    ax3.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2)
+    ax3.axvline(x=time[node2], color='red', linestyle='--', linewidth=2)
+    ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
+
+    # 标注节点1前后的加速度特征
+    ax3.axvspan(time[0], time[node1], alpha=0.1, color='green')
+    ax3.axvspan(time[node1], time[node2], alpha=0.1, color='yellow')
+    ax3.axvspan(time[node2], time[-1], alpha=0.1, color='red')
+
+    ax3.set_xlabel('时间', fontsize=12)
+    ax3.set_ylabel('加速度', fontsize=12)
+    ax3.legend(loc='best')
+    ax3.grid(True, alpha=0.3)
+    ax3.set_title('加速度-时间曲线（节点1: 加速度从0→正值；节点2: 加速度从峰值→0）', fontsize=12)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"图片已保存至: {save_path}")
+
+    plt.show()
+
+
+def analyze_excel_stages(excel_path, sheet_name=0, disp_col=None, time_col=None,
+                         smooth_win=11, init_ratio=0.15,
+                         acc_threshold_sigma=2.5, peak_decay_ratio=0.35):
+    """
+    主函数：读取Excel文件，识别三段式形变阶段转换节点
+
+    参数:
+    ----------
+    excel_path : str
+        Excel文件路径
+    sheet_name : str or int
+        工作表名称或索引（默认0，即第一个工作表）
+    disp_col : str or int
+        位移数据所在列（列名或索引），若为None则默认第一列
+    time_col : str or int
+        时间数据所在列（列名或索引），若为None则使用行号作为时间
+    smooth_win : int
+        平滑窗口大小（需为奇数）
+    init_ratio : float
+        初始稳定段比例
+    acc_threshold_sigma : float
+        加速度阈值系数
+    peak_decay_ratio : float
+        加速度峰值衰减比例
+
+    返回:
+    ----------
+    results : dict
+        包含节点位置、三个阶段的统计信息
+    """
+
+    # 读取Excel
+    print(f"正在读取文件: {excel_path}")
+    df = pd.read_excel(excel_path, sheet_name=sheet_name)
+    print(f"数据形状: {df.shape}")
+    print(f"列名: {list(df.columns)}")
+
+    # 确定位移列
+    if disp_col is None:
+        disp = df.iloc[:, 1].values
+        print(f"使用第一列作为位移数据")
+    else:
+        if isinstance(disp_col, str):
+            disp = df[disp_col].values
+        else:
+            disp = df.iloc[:, disp_col].values
+        print(f"使用列 '{disp_col}' 作为位移数据")
+
+    # 确定时间列
+    if time_col is None:
+        time = np.arange(len(disp))
+        print("使用行索引作为时间（无时间列）")
+    else:
+        if isinstance(time_col, str):
+            time = df[time_col].values
+        else:
+            time = df.iloc[:, time_col].values
+        print(f"使用列 '{time_col}' 作为时间数据")
+
+    # 去除缺失值
+    mask = ~(np.isnan(disp) | np.isnan(time))
+    disp = disp[mask]
+    time = time[mask]
+
+    print(f"有效数据点数: {len(disp)}")
+
+    # 识别转换节点
+    print("\n正在识别转换节点...")
+    node1, node2, vel, acc = find_transition_nodes(
+        disp, time,
+        smooth_win=smooth_win,
+        init_ratio=init_ratio
+    )
+
+    # 计算各阶段的统计信息
+    stage1_disp = disp[:node1]
+    stage2_disp = disp[node1:node2]
+    stage3_disp = disp[node2:]
+
+    stage1_vel = vel[:node1]
+    stage2_vel = vel[node1:node2]
+    stage3_vel = vel[node2:]
+
+    results = {
+        'node1_index': node1,
+        'node2_index': node2,
+        'node1_time': time[node1],
+        'node2_time': time[node2],
+        'stage1': {
+            'name': '缓慢匀速形变段',
+            'velocity_mean': np.mean(stage1_vel),
+            'velocity_std': np.std(stage1_vel),
+            'duration': time[node1] - time[0] if len(time) > 1 else node1,
+            'displacement_range': [stage1_disp[0], stage1_disp[-1]]
+        },
+        'stage2': {
+            'name': '加速形变段',
+            'velocity_mean': np.mean(stage2_vel),
+            'velocity_std': np.std(stage2_vel),
+            'velocity_increase_rate': (vel[node2 - 1] - vel[node1]) / (time[node2] - time[node1]) if time[node2] !=
+                                                                                                     time[node1] else 0,
+            'duration': time[node2] - time[node1] if len(time) > 1 else node2 - node1,
+            'displacement_range': [stage2_disp[0], stage2_disp[-1]]
+        },
+        'stage3': {
+            'name': '快速形变段',
+            'velocity_mean': np.mean(stage3_vel),
+            'velocity_std': np.std(stage3_vel),
+            'duration': time[-1] - time[node2] if len(time) > 1 else len(disp) - node2,
+            'displacement_range': [stage3_disp[0], stage3_disp[-1]]
+        }
+    }
+
+    # 打印结果
+    print("\n" + "=" * 60)
+    print("阶段转换节点识别结果")
+    print("=" * 60)
+    print(f"\n节点1（匀速 → 加速）: 索引 = {node1}, 时间 = {time[node1]:.2f}")
+    print(f"节点2（加速 → 快速）: 索引 = {node2}, 时间 = {time[node2]:.2f}")
+
+    print("\n" + "-" * 40)
+    print("各阶段统计信息:")
+    print("-" * 40)
+
+    for stage in ['stage1', 'stage2', 'stage3']:
+        s = results[stage]
+        print(f"\n{s['name']}:")
+        print(f"  平均速度: {s['velocity_mean']:.4f}")
+        print(f"  速度标准差: {s['velocity_std']:.4f}")
+        if stage == 'stage2':
+            print(f"  速度增长率: {s['velocity_increase_rate']:.4f}")
+        print(f"  持续时长: {s['duration']:.2f}")
+        print(f"  位移范围: [{s['displacement_range'][0]:.2f}, {s['displacement_range'][1]:.2f}]")
+
+    # 绘制结果
+    plot_results(disp, time, node1, node2, vel, acc)
+
+    return results
+
+
+# ==================== 使用示例 ====================
+if __name__ == "__main__":
+    # 方法1: 直接指定Excel文件路径
+    excel_file = "附件4：监测数据（训练集与实验集）-问题4.xlsx"  # 请替换为你的文件路径
+    try:
+        results = analyze_excel_stages(
+            excel_path=excel_file,
+            sheet_name=0,  # 第一个工作表
+            disp_col=1,  # 默认第一列为位移
+            time_col="时间",  # 无时间列则使用行号
+            smooth_win=11,  # 平滑窗口
+            init_ratio=0.50,  # 前15%作为初始段
+            acc_threshold_sigma=2.5,  # 2.5倍标准差阈值
+            peak_decay_ratio=0.05  # 峰值下降到35%作为节点2
+        )
+
+        # 如果需要导出结果到Excel
+        # results_df = pd.DataFrame({
+        #     '节点': ['节点1(匀速→加速)', '节点2(加速→快速)'],
+        #     '索引': [results['node1_index'], results['node2_index']],
+        #     '时间': [results['node1_time'], results['node2_time']]
+        # })
+        # results_df.to_excel('转换节点结果.xlsx', index=False)
+        # print("\n结果已导出到 '转换节点结果.xlsx'")
+
+    except FileNotFoundError:
+        print(f"\n错误: 找不到文件 '{excel_file}'")
+        print("请修改代码中的 'excel_file' 变量为正确的文件路径")
+
+        # 方法2: 如果你有数据可以直接粘贴测试
+        print("\n如需测试，可以使用以下模拟数据:")
+        # 生成模拟的三段式数据
+        np.random.seed(42)
+        t = np.arange(100)
+        # 匀速段 (0-30)
+        y1 = 0.5 * t[:30] + np.random.normal(0, 0.2, 30)
+        # 加速段 (30-70)
+        y2 = 15 + 0.5 * np.arange(40) + 0.02 * np.arange(40) ** 2 + np.random.normal(0, 0.3, 40)
+        # 快速段 (70-100)
+        y3 = 15 + 0.5 * 40 + 0.02 * 40 ** 2 + 3.5 * np.arange(30) + np.random.normal(0, 0.5, 30)
+        disp_mock = np.concatenate([y1, y2, y3])
+
+        results = analyze_excel_stages(
+            excel_path=None,
+            disp_col=None,
+            time_col=None,
+            smooth_win=11
+        )
+        # 注意：模拟数据需要手动传入，这里示意用法
+##
+

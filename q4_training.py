@@ -40,17 +40,23 @@ window_size = 5  # 根据你的数据采样频率调整
 df['表面位移_smooth'] = df['表面位移_mm'].rolling(window=window_size, min_periods=1).mean()
 
 # 同样平滑特征
-for col in ['降雨量_mm', '孔隙水压力_kPa', '微震事件数']:
+for col in ['干湿入渗系数', '孔隙水压力_kPa', '微震事件数']:
     df[f'{col}_smooth'] = df[col].rolling(window=3, min_periods=1).mean()
 
 # 使用平滑后的数据
 target_col = '表面位移_smooth'
-feature_cols = ['孔隙水压力_kPa', '微震事件数', '爆破点距离_m',
-                '单段最大药量_kg','干湿入渗系数']
+# feature_cols = ['孔隙水压力_kPa', '微震事件数', '爆破点距离_m',
+#                 '单段最大药量_kg','干湿入渗系数']
 
 # 处理爆破点距离异常
-df['爆破点距离_m'] = df['爆破点距离_m'].replace(1e9, np.nan)
-df['爆破点距离_m'] = df['爆破点距离_m'].fillna(method='ffill').fillna(df['爆破点距离_m'].median())
+# df['爆破点距离_m'] = df['爆破点距离_m'].replace(1e9, np.nan)
+# df['爆破点距离_m'] = df['爆破点距离_m'].fillna(method='ffill').fillna(df['爆破点距离_m'].median())
+
+df['是否爆破'] = (df['单段最大药量_kg'] > 0).astype(int)
+
+# 将是否爆破加入特征列表
+feature_cols = ['孔隙水压力_kPa', '微震事件数', '爆破点距离_m',
+                '单段最大药量_kg', '干湿入渗系数', '是否爆破']
 
 # ==================== 3. 创建滞后特征 ====================
 lag_steps = 5  # 减少滞后步数

@@ -155,61 +155,32 @@ def plot_results(disp, time, node1, node2, vel, acc, save_path=None):
         保存图片路径
     """
 
-    fig, axes = plt.subplots(3, 1, figsize=(14, 10))
+    fig, ax = plt.subplots(1, 1, figsize=(14, 6))
     fig.suptitle('滑坡位移三段式形变阶段识别', fontsize=16, fontweight='bold')
 
-    # 1. 位移-时间图
-    ax1 = axes[0]
-    ax1.plot(time, disp, 'b-', linewidth=1.5, alpha=0.7, label='原始位移')
-    ax1.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2,
-                label=f'节点1 (匀速→加速): t={time[node1]:.1f}')
-    ax1.axvline(x=time[node2], color='red', linestyle='--', linewidth=2,
-                label=f'节点2 (加速→快速): t={time[node2]:.1f}')
+    # 速度-时间图
+    ax.plot(time, vel, 'g-', linewidth=1.5, alpha=0.7, label='速度')
+    ax.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2,
+               label=f'节点1 (匀速→加速): t={time[node1]:.1f}')
+    ax.axvline(x=time[node2], color='red', linestyle='--', linewidth=2,
+               label=f'节点2 (加速→快速): t={time[node2]:.1f}')
+
+    # 预警阈值线
+    ax.axhline(y=np.mean(vel[node1:node2]), color='orange', linestyle=':',
+               linewidth=1.5, label=f'黄色预警 = {np.mean(vel[node1:node2]):.4f}')
+    ax.axhline(y=np.mean(vel[node2:]), color='red', linestyle=':',
+               linewidth=1.5, label=f'红色预警 = {np.mean(vel[node2:]):.4f}')
 
     # 标注三个区域
-    ax1.axvspan(time[0], time[node1], alpha=0.1, color='green', label='①缓慢匀速段')
-    ax1.axvspan(time[node1], time[node2], alpha=0.1, color='yellow', label='②加速形变段')
-    ax1.axvspan(time[node2], time[-1], alpha=0.1, color='red', label='③快速形变段')
+    ax.axvspan(time[0], time[node1], alpha=0.1, color='green', label='①缓慢匀速段')
+    ax.axvspan(time[node1], time[node2], alpha=0.1, color='yellow', label='②加速形变段')
+    ax.axvspan(time[node2], time[-1], alpha=0.1, color='red', label='③快速形变段')
 
-    ax1.set_xlabel('时间', fontsize=12)
-    ax1.set_ylabel('位移', fontsize=12)
-    ax1.legend(loc='best')
-    ax1.grid(True, alpha=0.3)
-    ax1.set_title('位移-时间曲线与阶段划分', fontsize=12)
-
-    # 2. 速度-时间图
-    ax2 = axes[1]
-    ax2.plot(time, vel, 'g-', linewidth=1.5, alpha=0.7, label='速度')
-    ax2.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2)
-    ax2.axvline(x=time[node2], color='red', linestyle='--', linewidth=2)
-    ax2.axhline(y=np.mean(vel[:node1]), color='green', linestyle=':',
-                linewidth=1.5, label=f'匀速段平均速度 = {np.mean(vel[:node1]):.4f}')
-    ax2.axhline(y=np.mean(vel[node2:]), color='red', linestyle=':',
-                linewidth=1.5, label=f'快速段平均速度 = {np.mean(vel[node2:]):.4f}')
-
-    ax2.set_xlabel('时间', fontsize=12)
-    ax2.set_ylabel('速度', fontsize=12)
-    ax2.legend(loc='best')
-    ax2.grid(True, alpha=0.3)
-    ax2.set_title('速度-时间曲线（速度突变是阶段转换的关键指标）', fontsize=12)
-
-    # 3. 加速度-时间图
-    ax3 = axes[2]
-    ax3.plot(time, acc, 'r-', linewidth=1.5, alpha=0.7, label='加速度')
-    ax3.axvline(x=time[node1], color='orange', linestyle='--', linewidth=2)
-    ax3.axvline(x=time[node2], color='red', linestyle='--', linewidth=2)
-    ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
-
-    # 标注节点1前后的加速度特征
-    ax3.axvspan(time[0], time[node1], alpha=0.1, color='green')
-    ax3.axvspan(time[node1], time[node2], alpha=0.1, color='yellow')
-    ax3.axvspan(time[node2], time[-1], alpha=0.1, color='red')
-
-    ax3.set_xlabel('时间', fontsize=12)
-    ax3.set_ylabel('加速度', fontsize=12)
-    ax3.legend(loc='best')
-    ax3.grid(True, alpha=0.3)
-    ax3.set_title('加速度-时间曲线（节点1: 加速度从0→正值；节点2: 加速度从峰值→0）', fontsize=12)
+    ax.set_xlabel('时间', fontsize=12)
+    ax.set_ylabel('速度', fontsize=12)
+    ax.legend(loc='best')
+    ax.grid(True, alpha=0.3)
+    ax.set_title('速度-时间曲线（速度突变是阶段转换的关键指标）', fontsize=12)
 
     plt.tight_layout()
 
@@ -363,15 +334,15 @@ def analyze_excel_stages(excel_path, sheet_name=0, disp_col=None, time_col=None,
 # ==================== 使用示例 ====================
 if __name__ == "__main__":
     # 方法1: 直接指定Excel文件路径
-    excel_file = "附件4：监测数据（训练集与实验集）-问题4.xlsx"  # 请替换为你的文件路径
+    excel_file = "附件5：监测数据-问题5.xlsx"  # 请替换为你的文件路径
     try:
         results = analyze_excel_stages(
             excel_path=excel_file,
             sheet_name=0,  # 第一个工作表
             disp_col=1,  # 默认第一列为位移
-            time_col="时间_小时",  # 无时间列则使用行号
+            time_col="时间",  # 无时间列则使用行号
             smooth_win=11,  # 平滑窗口
-            init_ratio=0.50,  # 前15%作为初始段
+            init_ratio=0.30,  # 前15%作为初始段
             acc_threshold_sigma=2.5,  # 2.5倍标准差阈值
             peak_decay_ratio=0.05  # 峰值下降到35%作为节点2
         )
@@ -388,26 +359,3 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print(f"\n错误: 找不到文件 '{excel_file}'")
         print("请修改代码中的 'excel_file' 变量为正确的文件路径")
-
-        # 方法2: 如果你有数据可以直接粘贴测试
-        print("\n如需测试，可以使用以下模拟数据:")
-        # 生成模拟的三段式数据
-        np.random.seed(42)
-        t = np.arange(100)
-        # 匀速段 (0-30)
-        y1 = 0.5 * t[:30] + np.random.normal(0, 0.2, 30)
-        # 加速段 (30-70)
-        y2 = 15 + 0.5 * np.arange(40) + 0.02 * np.arange(40) ** 2 + np.random.normal(0, 0.3, 40)
-        # 快速段 (70-100)
-        y3 = 15 + 0.5 * 40 + 0.02 * 40 ** 2 + 3.5 * np.arange(30) + np.random.normal(0, 0.5, 30)
-        disp_mock = np.concatenate([y1, y2, y3])
-
-        results = analyze_excel_stages(
-            excel_path=None,
-            disp_col=None,
-            time_col=None,
-            smooth_win=11
-        )
-        # 注意：模拟数据需要手动传入，这里示意用法
-##
-

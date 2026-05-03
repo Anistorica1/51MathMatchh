@@ -363,7 +363,7 @@ def analyze_excel_stages(excel_path, sheet_name=0, disp_col=None, time_col=None,
 # ==================== 使用示例 ====================
 if __name__ == "__main__":
     # 方法1: 直接指定Excel文件路径
-    excel_file = "附件4：监测数据（训练集与实验集）-问题4.xlsx"  # 请替换为你的文件路径
+    excel_file = "附件2：位移时序数据-问题2.xlsx"  # 请替换为你的文件路径
     try:
         results = analyze_excel_stages(
             excel_path=excel_file,
@@ -377,13 +377,13 @@ if __name__ == "__main__":
         )
 
         # 如果需要导出结果到Excel
-        results_df = pd.DataFrame({
-            '节点': ['节点1(匀速→加速)', '节点2(加速→快速)'],
-            '索引': [results['node1_index'], results['node2_index']],
-            '时间': [results['node1_time'], results['node2_time']]
-        })
-        results_df.to_excel('转换节点结果.xlsx', index=False)
-        print("\n结果已导出到 '转换节点结果.xlsx'")
+        # results_df = pd.DataFrame({
+        #     '节点': ['节点1(匀速→加速)', '节点2(加速→快速)'],
+        #     '索引': [results['node1_index'], results['node2_index']],
+        #     '时间': [results['node1_time'], results['node2_time']]
+        # })
+        # results_df.to_excel('转换节点结果.xlsx', index=False)
+        # print("\n结果已导出到 '转换节点结果.xlsx'")
 
     except FileNotFoundError:
         print(f"\n错误: 找不到文件 '{excel_file}'")

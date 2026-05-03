@@ -13,7 +13,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
 plt.rcParams['axes.unicode_minus'] = False
 
 def fun1():
-    df = pd.read_excel("4phase3lab.xlsx")
+    df = pd.read_excel("5phase3.xlsx")
     df['is_blasting'] = df['爆破点距离_m'].notna().astype(int)
 
     # 或者如果两个字段都为空才视为非爆破
@@ -21,7 +21,7 @@ def fun1():
     # 用 -1 填充（因为距离和药量物理上 ≥ 0，-1 明显异常）
     df['爆破点距离_m'] = df['爆破点距离_m'].fillna(1000000000)
     df['单段最大药量_kg'] = df['单段最大药量_kg'].fillna(0)
-    df.to_excel("4phase3lab.xlsx")
+    df.to_excel("5phase3.xlsx")
 
 if __name__ == '__main__':
     fun1()

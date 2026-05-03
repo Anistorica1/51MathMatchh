@@ -363,15 +363,15 @@ def analyze_excel_stages(excel_path, sheet_name=0, disp_col=None, time_col=None,
 # ==================== 使用示例 ====================
 if __name__ == "__main__":
     # 方法1: 直接指定Excel文件路径
-    excel_file = "附件4：监测数据（训练集与实验集）-问题4.xlsx"  # 请替换为你的文件路径
+    excel_file = "附件5：监测数据-问题5.xlsx"  # 请替换为你的文件路径
     try:
         results = analyze_excel_stages(
             excel_path=excel_file,
             sheet_name=0,  # 第一个工作表
             disp_col=1,  # 默认第一列为位移
-            time_col="时间_小时",  # 无时间列则使用行号
+            time_col="时间",  # 无时间列则使用行号
             smooth_win=11,  # 平滑窗口
-            init_ratio=0.50,  # 前15%作为初始段
+            init_ratio=0.30,  # 前15%作为初始段
             acc_threshold_sigma=2.5,  # 2.5倍标准差阈值
             peak_decay_ratio=0.05  # 峰值下降到35%作为节点2
         )
